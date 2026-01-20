@@ -1,10 +1,10 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { Category, TargetAudience, Language } from "../types";
+import { Language } from "../types";
 
 const getAI = () => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    throw new Error("API_KEY_MISSING");
+  if (!apiKey || apiKey === '') {
+    throw new Error("API_KEY_NOT_FOUND");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -22,21 +22,27 @@ function decodeBase64ToUint8(base64: string) {
 export const analyzeProductImages = async (base64Images: string[], lang: Language = 'ru') => {
   if (!base64Images.length) return [];
   
-  const ai = getAI();
+  let ai;
+  try {
+    ai = getAI();
+  } catch (e) {
+    throw new Error("Ключ API не найден. Пожалуйста, добавьте API_KEY в переменные окружения Vercel.");
+  }
+
   const model = 'gemini-3-flash-preview';
   const langText = lang === 'ru' ? 'Russian' : 'Uzbek';
 
   const prompt = `
-    Analyze these images as an Expert Blue Ocean Strategist. 
-    Return a JSON array where each object corresponds to an image and contains:
-    1. title: Catchy name
-    2. category: E-commerce category
-    3. price: Estimated numeric price in UZS
-    4. description: Compelling Telegram marketing text in ${langText}
-    5. blueOceanAdvice: Unique strategic positioning advice
-    6. scarcityScore: Number 1-100
-    7. voiceScript: 15-word emotional hook
-    OUTPUT: Strict JSON array.
+    Analyze these product images as an Expert Blue Ocean Strategist. 
+    Return a JSON array of objects. Each object MUST contain:
+    - title (string)
+    - category (string)
+    - price (number in UZS)
+    - description (string in ${langText})
+    - blueOceanAdvice (string strategy)
+    - scarcityScore (number 1-100)
+    - voiceScript (short string)
+    OUTPUT: Strict JSON only.
   `;
 
   const imageParts = base64Images.map(base64 => ({
@@ -71,12 +77,16 @@ export const analyzeProductImages = async (base64Images: string[], lang: Languag
       }
     });
 
-    const text = response.text || "[]";
+    const text = response.text;
+    if (!text) throw new Error("Empty AI response");
     return JSON.parse(text);
   } catch (e: any) {
-    console.error("AI Analysis Error:", e);
-    if (e.message === "API_KEY_MISSING") throw new Error("Ключ API не настроен в окружении.");
-    throw e;
+    console.error("Gemini Error:", e);
+    const msg = e.message || "Unknown Error";
+    if (msg.includes("403") || msg.includes("401")) {
+      throw new Error("Неверный API ключ или доступ запрещен (403/401).");
+    }
+    throw new Error(`Ошибка Google AI: ${msg}`);
   }
 };
 
@@ -85,12 +95,12 @@ export const generateProductVideo = async (
   prompt: string,
   onProgress?: (status: string) => void
 ): Promise<string | null> => {
-  const ai = getAI();
   try {
+    const ai = getAI();
     onProgress?.("Инициализация...");
     let operation = await ai.models.generateVideos({
       model: 'veo-3.1-fast-generate-preview',
-      prompt: `Cinematic product commercial: ${prompt}`,
+      prompt: `Product commercial: ${prompt}`,
       image: {
         imageBytes: base64Image.split(',')[1],
         mimeType: 'image/jpeg'
@@ -121,8 +131,8 @@ export const generateProductVideo = async (
 };
 
 export const generateVoicePitch = async (text: string): Promise<string | null> => {
-  const ai = getAI();
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: `Say this: ${text}` }] }],
@@ -147,14 +157,14 @@ export const generateVoicePitch = async (text: string): Promise<string | null> =
 };
 
 export const enhanceImage = async (base64Image: string, title: string): Promise<string | null> => {
-  const ai = getAI();
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
         parts: [
           { inlineData: { data: base64Image.split(',')[1], mimeType: 'image/jpeg' } },
-          { text: `Professional product catalog enhancement for: ${title}` }
+          { text: `Enhance product: ${title}` }
         ]
       }
     });
@@ -166,11 +176,10 @@ export const enhanceImage = async (base64Image: string, title: string): Promise<
 };
 
 export const performMarketResearch = async (query: string, lang: Language = 'ru') => {
-  const ai = getAI();
-  const model = 'gemini-3-pro-preview';
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
-      model,
+      model: 'gemini-3-pro-preview',
       contents: [{ parts: [{ text: query }] }],
       config: { tools: [{ googleSearch: {} }] },
     });
