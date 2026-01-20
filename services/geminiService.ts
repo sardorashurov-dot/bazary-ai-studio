@@ -3,8 +3,8 @@ import { Language } from "../types";
 
 const getAI = () => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey || apiKey === '') {
-    throw new Error("API_KEY_NOT_FOUND");
+  if (!apiKey || apiKey.trim() === '') {
+    throw new Error("API_KEY_MISSING");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -26,22 +26,22 @@ export const analyzeProductImages = async (base64Images: string[], lang: Languag
   try {
     ai = getAI();
   } catch (e) {
-    throw new Error("Ключ API не найден. Пожалуйста, добавьте API_KEY в переменные окружения Vercel.");
+    throw new Error("Ключ API не найден. Добавьте API_KEY в Settings -> Environment Variables на Vercel.");
   }
 
   const model = 'gemini-3-flash-preview';
   const langText = lang === 'ru' ? 'Russian' : 'Uzbek';
 
   const prompt = `
-    Analyze these product images as an Expert Blue Ocean Strategist. 
-    Return a JSON array of objects. Each object MUST contain:
-    - title (string)
-    - category (string)
-    - price (number in UZS)
-    - description (string in ${langText})
-    - blueOceanAdvice (string strategy)
-    - scarcityScore (number 1-100)
-    - voiceScript (short string)
+    Analyze these product images for a "Blue Ocean" strategy. 
+    Return a JSON array of objects with these properties:
+    - title: unique catchy name
+    - category: product type
+    - price: number in UZS
+    - description: marketing text in ${langText}
+    - blueOceanAdvice: strategic positioning advice
+    - scarcityScore: number 1-100
+    - voiceScript: emotional pitch (15 words)
     OUTPUT: Strict JSON only.
   `;
 
@@ -78,15 +78,15 @@ export const analyzeProductImages = async (base64Images: string[], lang: Languag
     });
 
     const text = response.text;
-    if (!text) throw new Error("Empty AI response");
+    if (!text) throw new Error("ИИ вернул пустой результат.");
     return JSON.parse(text);
   } catch (e: any) {
-    console.error("Gemini Error:", e);
+    console.error("Gemini Failure:", e);
     const msg = e.message || "Unknown Error";
     if (msg.includes("403") || msg.includes("401")) {
-      throw new Error("Неверный API ключ или доступ запрещен (403/401).");
+      throw new Error("Ошибка доступа (403): Проверьте валидность вашего API ключа.");
     }
-    throw new Error(`Ошибка Google AI: ${msg}`);
+    throw new Error(`Ошибка ИИ: ${msg}`);
   }
 };
 
@@ -100,7 +100,7 @@ export const generateProductVideo = async (
     onProgress?.("Инициализация...");
     let operation = await ai.models.generateVideos({
       model: 'veo-3.1-fast-generate-preview',
-      prompt: `Product commercial: ${prompt}`,
+      prompt: `Premium product showcase: ${prompt}`,
       image: {
         imageBytes: base64Image.split(',')[1],
         mimeType: 'image/jpeg'
@@ -114,7 +114,7 @@ export const generateProductVideo = async (
 
     while (!operation.done) {
       await new Promise(resolve => setTimeout(resolve, 8000));
-      onProgress?.("Рендеринг...");
+      onProgress?.("Обработка...");
       operation = await ai.operations.getVideosOperation({ operation });
     }
 
@@ -164,7 +164,7 @@ export const enhanceImage = async (base64Image: string, title: string): Promise<
       contents: {
         parts: [
           { inlineData: { data: base64Image.split(',')[1], mimeType: 'image/jpeg' } },
-          { text: `Enhance product: ${title}` }
+          { text: `Enhance for e-commerce: ${title}` }
         ]
       }
     });
