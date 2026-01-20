@@ -4,9 +4,9 @@ import { Category, TargetAudience, Language } from "../types";
 const getAI = () => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    console.error("Gemini API Key is missing! Check your environment variables.");
+    throw new Error("API_KEY_MISSING");
   }
-  return new GoogleGenAI({ apiKey: apiKey || '' });
+  return new GoogleGenAI({ apiKey });
 };
 
 function decodeBase64ToUint8(base64: string) {
@@ -27,12 +27,15 @@ export const analyzeProductImages = async (base64Images: string[], lang: Languag
   const langText = lang === 'ru' ? 'Russian' : 'Uzbek';
 
   const prompt = `
-    TASK: Expert Blue Ocean Strategist & E-commerce Architect.
-    Analyze these images. 
-    1. Define a unique "Unoccupied Space" (Blue Ocean Edge).
-    2. Assess "Market Scarcity Score" (1-100) based on how rare this specific style/offer is.
-    3. Generate a compelling Telegram pitch in ${langText}.
-    4. Suggested Voice-over Script: A 15-word emotional hook for a voice message.
+    Analyze these images as an Expert Blue Ocean Strategist. 
+    Return a JSON array where each object corresponds to an image and contains:
+    1. title: Catchy name
+    2. category: E-commerce category
+    3. price: Estimated numeric price in UZS
+    4. description: Compelling Telegram marketing text in ${langText}
+    5. blueOceanAdvice: Unique strategic positioning advice
+    6. scarcityScore: Number 1-100
+    7. voiceScript: 15-word emotional hook
     OUTPUT: Strict JSON array.
   `;
 
@@ -68,10 +71,12 @@ export const analyzeProductImages = async (base64Images: string[], lang: Languag
       }
     });
 
-    return JSON.parse(response.text || "[]");
-  } catch (e) {
+    const text = response.text || "[]";
+    return JSON.parse(text);
+  } catch (e: any) {
     console.error("AI Analysis Error:", e);
-    return [];
+    if (e.message === "API_KEY_MISSING") throw new Error("Ключ API не настроен в окружении.");
+    throw e;
   }
 };
 
@@ -85,7 +90,7 @@ export const generateProductVideo = async (
     onProgress?.("Инициализация...");
     let operation = await ai.models.generateVideos({
       model: 'veo-3.1-fast-generate-preview',
-      prompt: `Product commercial: ${prompt}`,
+      prompt: `Cinematic product commercial: ${prompt}`,
       image: {
         imageBytes: base64Image.split(',')[1],
         mimeType: 'image/jpeg'
@@ -149,7 +154,7 @@ export const enhanceImage = async (base64Image: string, title: string): Promise<
       contents: {
         parts: [
           { inlineData: { data: base64Image.split(',')[1], mimeType: 'image/jpeg' } },
-          { text: `Enhance product: ${title}` }
+          { text: `Professional product catalog enhancement for: ${title}` }
         ]
       }
     });
@@ -175,6 +180,6 @@ export const performMarketResearch = async (query: string, lang: Language = 'ru'
       ?.map((chunk: any) => ({ uri: chunk.web.uri, title: chunk.web.title || "Source" })) || [];
     return { text, sources };
   } catch (e) {
-    return { text: "Error", sources: [] };
+    return { text: "Search Error", sources: [] };
   }
 };
