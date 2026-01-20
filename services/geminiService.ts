@@ -1,17 +1,24 @@
-
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { Category, TargetAudience, Language } from "../types";
 
-/**
- * Helper to initialize the Google GenAI client using the environment API key.
- * Always uses the named parameter as per SDK requirements.
- */
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getAI = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.error("Gemini API Key is missing! Check your environment variables.");
+  }
+  return new GoogleGenAI({ apiKey: apiKey || '' });
+};
 
-/**
- * Analyzes product images to create strategic Blue Ocean marketing content.
- * Uses gemini-3-flash-preview for general text and JSON generation.
- */
+function decodeBase64ToUint8(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
 export const analyzeProductImages = async (base64Images: string[], lang: Language = 'ru') => {
   if (!base64Images.length) return [];
   
@@ -20,20 +27,15 @@ export const analyzeProductImages = async (base64Images: string[], lang: Languag
   const langText = lang === 'ru' ? 'Russian' : 'Uzbek';
 
   const prompt = `
-    TASK: Blue Ocean Merchant Strategist.
-    Analyze these product images and find an "Unoccupied Market Space".
-    
-    FOR EACH PRODUCT:
-    1. Title: Creative brand name.
-    2. blueOceanAdvice: Find one unique reason why people should buy this instead of cheap competitors (Emotional value, Lifestyle hack, or Rare niche).
-    3. Category: Choose from [${Object.values(Category).join(', ')}].
-    4. Marketing Copy: Compelling post for Telegram in ${langText}.
-    5. Price: Premium but fair UZS.
-
-    OUTPUT: Valid JSON array.
+    TASK: Expert Blue Ocean Strategist & E-commerce Architect.
+    Analyze these images. 
+    1. Define a unique "Unoccupied Space" (Blue Ocean Edge).
+    2. Assess "Market Scarcity Score" (1-100) based on how rare this specific style/offer is.
+    3. Generate a compelling Telegram pitch in ${langText}.
+    4. Suggested Voice-over Script: A 15-word emotional hook for a voice message.
+    OUTPUT: Strict JSON array.
   `;
 
-  // Encode images for the multipart request
   const imageParts = base64Images.map(base64 => ({
     inlineData: {
       mimeType: "image/jpeg",
@@ -54,97 +56,125 @@ export const analyzeProductImages = async (base64Images: string[], lang: Languag
             properties: {
               title: { type: Type.STRING },
               category: { type: Type.STRING },
-              targetAudience: { type: Type.STRING },
               price: { type: Type.NUMBER },
               description: { type: Type.STRING },
-              blueOceanAdvice: { type: Type.STRING }
+              blueOceanAdvice: { type: Type.STRING },
+              scarcityScore: { type: Type.NUMBER },
+              voiceScript: { type: Type.STRING }
             },
-            required: ["title", "category", "targetAudience", "price", "description", "blueOceanAdvice"]
+            required: ["title", "category", "price", "description", "blueOceanAdvice", "scarcityScore", "voiceScript"]
           }
         }
       }
     });
 
-    // Access .text property directly (not a method) as per SDK rules
-    const text = response.text || "[]";
-    return JSON.parse(text);
+    return JSON.parse(response.text || "[]");
   } catch (e) {
-    console.error("AI Strategic Analysis Error:", e);
+    console.error("AI Analysis Error:", e);
     return [];
   }
 };
 
-/**
- * Enhances an existing image using Gemini's image editing capabilities.
- * Uses gemini-2.5-flash-image for image generation/editing tasks.
- */
-export const enhanceImage = async (
-  base64Image: string, category: Category, title: string, targetAudience?: TargetAudience, aspectRatio: "1:1" | "9:16" = "1:1"
+export const generateProductVideo = async (
+  base64Image: string, 
+  prompt: string,
+  onProgress?: (status: string) => void
 ): Promise<string | null> => {
   const ai = getAI();
-  const model = 'gemini-2.5-flash-image';
-  const prompt = `Commercial product shot for "${title}". Aesthetic Blue Ocean style: clean, minimalist, high-end lifestyle background, soft azure lighting. Aspect ratio: ${aspectRatio}.`;
+  try {
+    onProgress?.("Инициализация...");
+    let operation = await ai.models.generateVideos({
+      model: 'veo-3.1-fast-generate-preview',
+      prompt: `Product commercial: ${prompt}`,
+      image: {
+        imageBytes: base64Image.split(',')[1],
+        mimeType: 'image/jpeg'
+      },
+      config: {
+        numberOfVideos: 1,
+        resolution: '720p',
+        aspectRatio: '9:16'
+      }
+    });
 
+    while (!operation.done) {
+      await new Promise(resolve => setTimeout(resolve, 8000));
+      onProgress?.("Рендеринг...");
+      operation = await ai.operations.getVideosOperation({ operation });
+    }
+
+    const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+    if (!downloadLink) return null;
+
+    const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  } catch (e) {
+    console.error("Video Error:", e);
+    return null;
+  }
+};
+
+export const generateVoicePitch = async (text: string): Promise<string | null> => {
+  const ai = getAI();
   try {
     const response = await ai.models.generateContent({
-      model,
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: `Say this: ${text}` }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Puck' }
+          }
+        }
+      }
+    });
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!base64Audio) return null;
+
+    const audioBlob = new Blob([decodeBase64ToUint8(base64Audio)], { type: 'audio/pcm' });
+    return URL.createObjectURL(audioBlob);
+  } catch (e) {
+    return null;
+  }
+};
+
+export const enhanceImage = async (base64Image: string, title: string): Promise<string | null> => {
+  const ai = getAI();
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
       contents: {
         parts: [
           { inlineData: { data: base64Image.split(',')[1], mimeType: 'image/jpeg' } },
-          { text: prompt }
+          { text: `Enhance product: ${title}` }
         ]
-      },
-      config: { imageConfig: { aspectRatio } }
-    });
-    
-    // Iterate through parts to find the image part (it may not be the first part)
-    const candidate = response.candidates?.[0];
-    if (candidate?.content?.parts) {
-      for (const part of candidate.content.parts) {
-        if (part.inlineData) {
-          return `data:image/png;base64,${part.inlineData.data}`;
-        }
       }
-    }
-  } catch (e) { console.error("Image Enhancement Error:", e); }
-  return null;
+    });
+    const part = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
+    return part ? `data:image/png;base64,${part.inlineData.data}` : null;
+  } catch (e) {
+    return null;
+  }
 };
 
-/**
- * Performs market research with Google Search grounding.
- * Extracts sources from groundingMetadata as required.
- */
 export const performMarketResearch = async (query: string, lang: Language = 'ru') => {
   const ai = getAI();
-  const model = 'gemini-3-flash-preview';
-  const langText = lang === 'ru' ? 'in Russian' : 'in Uzbek';
-  
+  const model = 'gemini-3-pro-preview';
   try {
     const response = await ai.models.generateContent({
       model,
-      contents: `Perform in-depth market research and competitive analysis on: ${query}. Respond ${langText}.`,
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
+      contents: [{ parts: [{ text: query }] }],
+      config: { tools: [{ googleSearch: {} }] },
     });
-
-    // Extract grounding chunks as web sources for the UI
+    const text = response.text || "";
     const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
-      ?.map((chunk: any) => ({
-        uri: chunk.web?.uri,
-        title: chunk.web?.title || 'External Source',
-      }))
-      .filter((s: any) => s.uri) || [];
-
-    return {
-      text: response.text || '',
-      sources,
-    };
+      ?.filter((chunk: any) => chunk.web)
+      ?.map((chunk: any) => ({ uri: chunk.web.uri, title: chunk.web.title || "Source" })) || [];
+    return { text, sources };
   } catch (e) {
-    console.error("Market Research Error:", e);
-    return { 
-      text: lang === 'ru' ? "Произошла ошибка при анализе рынка." : "Bozor tahlili vaqtida xatolik yuz berdi.", 
-      sources: [] 
-    };
+    return { text: "Error", sources: [] };
   }
 };
