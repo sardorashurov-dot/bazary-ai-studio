@@ -18,6 +18,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, shop, user, lan
 
   const menuItems = [
     { id: 'dashboard', label: t.dashboard, icon: '📊' },
+    { id: 'research', label: lang === 'ru' ? 'Исследование' : 'Tadqiqot', icon: '🔍' },
     { id: 'onboarding', label: t.aiStudio, icon: '✨' },
     { id: 'inventory', label: t.catalog, icon: '🛍️' },
     { id: 'orders', label: t.orders, icon: '📦' },
@@ -31,7 +32,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, shop, user, lan
 
   return (
     <>
-      {/* Burger Menu for TWA Mobile */}
       <button 
         onClick={() => setIsOpen(!isOpen)}
         className="lg:hidden fixed top-6 right-6 z-[100] w-12 h-12 bg-black text-white rounded-2xl flex items-center justify-center shadow-2xl active:scale-90 transition-all"
@@ -92,7 +92,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, shop, user, lan
         </div>
       </div>
 
-      {/* Backdrop for mobile */}
       {isOpen && (
         <div 
           onClick={() => setIsOpen(false)}

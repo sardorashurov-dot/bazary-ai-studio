@@ -2,35 +2,38 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Category, TargetAudience, Language } from "../types";
 
-const getAI = () => {
-  const envKey = process.env.API_KEY;
-  const localKey = localStorage.getItem('bazary_standalone_key');
-  const key = envKey || localKey || '';
-  return new GoogleGenAI({ apiKey: key });
-};
+/**
+ * Helper to initialize the Google GenAI client using the environment API key.
+ * Always uses the named parameter as per SDK requirements.
+ */
+const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+/**
+ * Analyzes product images to create strategic Blue Ocean marketing content.
+ * Uses gemini-3-flash-preview for general text and JSON generation.
+ */
 export const analyzeProductImages = async (base64Images: string[], lang: Language = 'ru') => {
   if (!base64Images.length) return [];
   
   const ai = getAI();
   const model = 'gemini-3-flash-preview';
-  
   const langText = lang === 'ru' ? 'Russian' : 'Uzbek';
 
   const prompt = `
-    TASK: You are an E-commerce Expert. Analyze the provided ${base64Images.length} images.
-    INSTRUCTIONS:
-    1. For EACH image, create a product listing. 
-    2. You MUST return exactly ${base64Images.length} items in the JSON array.
-    3. Category must be one of: ${Object.values(Category).join(', ')}.
-    4. TargetAudience must be one of: ${Object.values(TargetAudience).join(', ')}.
-    5. Price: Suggest a realistic price in UZS (numbers only).
-    6. Description: Create a catchy social media post with emojis in ${langText} language.
-    7. Title: Short and professional in ${langText} language.
+    TASK: Blue Ocean Merchant Strategist.
+    Analyze these product images and find an "Unoccupied Market Space".
+    
+    FOR EACH PRODUCT:
+    1. Title: Creative brand name.
+    2. blueOceanAdvice: Find one unique reason why people should buy this instead of cheap competitors (Emotional value, Lifestyle hack, or Rare niche).
+    3. Category: Choose from [${Object.values(Category).join(', ')}].
+    4. Marketing Copy: Compelling post for Telegram in ${langText}.
+    5. Price: Premium but fair UZS.
 
-    FORMAT: Return ONLY a valid JSON array of objects.
+    OUTPUT: Valid JSON array.
   `;
 
+  // Encode images for the multipart request
   const imageParts = base64Images.map(base64 => ({
     inlineData: {
       mimeType: "image/jpeg",
@@ -41,7 +44,7 @@ export const analyzeProductImages = async (base64Images: string[], lang: Languag
   try {
     const response = await ai.models.generateContent({
       model,
-      contents: [{ parts: [...imageParts, { text: prompt }] }],
+      contents: { parts: [...imageParts, { text: prompt }] },
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -53,109 +56,95 @@ export const analyzeProductImages = async (base64Images: string[], lang: Languag
               category: { type: Type.STRING },
               targetAudience: { type: Type.STRING },
               price: { type: Type.NUMBER },
-              description: { type: Type.STRING }
+              description: { type: Type.STRING },
+              blueOceanAdvice: { type: Type.STRING }
             },
-            required: ["title", "category", "targetAudience", "price", "description"]
+            required: ["title", "category", "targetAudience", "price", "description", "blueOceanAdvice"]
           }
         }
       }
     });
 
-    const text = response.text;
-    if (!text) throw new Error("Empty response from AI");
-    
-    const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed : [parsed];
+    // Access .text property directly (not a method) as per SDK rules
+    const text = response.text || "[]";
+    return JSON.parse(text);
   } catch (e) {
-    console.error("Gemini Analysis Error:", e);
-    return base64Images.map((_, i) => ({
-      title: `Product ${i + 1}`,
-      category: Category.OTHER,
-      targetAudience: TargetAudience.NONE,
-      price: 0,
-      description: "AI failed to generate description."
-    }));
+    console.error("AI Strategic Analysis Error:", e);
+    return [];
   }
 };
 
+/**
+ * Enhances an existing image using Gemini's image editing capabilities.
+ * Uses gemini-2.5-flash-image for image generation/editing tasks.
+ */
 export const enhanceImage = async (
-  base64Image: string, 
-  category: Category, 
-  title: string,
-  targetAudience?: TargetAudience,
-  aspectRatio: "1:1" | "9:16" = "1:1"
+  base64Image: string, category: Category, title: string, targetAudience?: TargetAudience, aspectRatio: "1:1" | "9:16" = "1:1"
 ): Promise<string | null> => {
   const ai = getAI();
   const model = 'gemini-2.5-flash-image';
-  
-  let lifestyleContext = "";
-  if ([Category.CLOTHING, Category.SHOES, Category.ACCESSORIES].includes(category)) {
-    lifestyleContext = `professional high-end studio fashion setup, soft box lighting, clean solid background.`;
-  } else if (category === Category.HOME_LIVING) {
-    lifestyleContext = `modern aesthetic interior, natural soft architectural light, premium catalog setting.`;
-  } else {
-    lifestyleContext = `minimalist commercial product photography background with professional studio shadows.`;
-  }
-
-  const prompt = `
-    STRICT INSTRUCTION: DO NOT CHANGE THE PRODUCT ITSELF. 
-    Keep the product from this image exactly as it is in its original shape, color, and texture. 
-    Task: Replace the background and lighting with a ${lifestyleContext} for the product "${title}". 
-    The final image should look like a professional high-end advertising studio shot. 
-    Style: ${aspectRatio} format commercial photography.
-  `;
+  const prompt = `Commercial product shot for "${title}". Aesthetic Blue Ocean style: clean, minimalist, high-end lifestyle background, soft azure lighting. Aspect ratio: ${aspectRatio}.`;
 
   try {
     const response = await ai.models.generateContent({
       model,
       contents: {
         parts: [
-          { inlineData: { data: base64Image.includes(',') ? base64Image.split(',')[1] : base64Image, mimeType: 'image/jpeg' } },
-          { text: prompt },
-        ],
+          { inlineData: { data: base64Image.split(',')[1], mimeType: 'image/jpeg' } },
+          { text: prompt }
+        ]
       },
-      config: {
-        imageConfig: { aspectRatio }
-      }
+      config: { imageConfig: { aspectRatio } }
     });
-
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+    
+    // Iterate through parts to find the image part (it may not be the first part)
+    const candidate = response.candidates?.[0];
+    if (candidate?.content?.parts) {
+      for (const part of candidate.content.parts) {
+        if (part.inlineData) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
+      }
     }
-  } catch (e) {
-    console.error("Enhance error:", e);
-  }
+  } catch (e) { console.error("Image Enhancement Error:", e); }
   return null;
 };
 
-export const generateProductVideo = async (
-  base64Image: string, 
-  productTitle: string,
-  aspectRatio: "9:16" | "16:9" = "9:16",
-  onStatusChange?: (status: string) => void
-): Promise<string | null> => {
+/**
+ * Performs market research with Google Search grounding.
+ * Extracts sources from groundingMetadata as required.
+ */
+export const performMarketResearch = async (query: string, lang: Language = 'ru') => {
   const ai = getAI();
-  onStatusChange?.("Initializing AI Video Engine...");
+  const model = 'gemini-3-flash-preview';
+  const langText = lang === 'ru' ? 'in Russian' : 'in Uzbek';
+  
   try {
-    let operation = await ai.models.generateVideos({
-      model: 'veo-3.1-fast-generate-preview',
-      prompt: `Premium commercial showcase for ${productTitle}. Cinematic lighting, smooth camera movement, high-end production value, ${aspectRatio} format.`,
-      image: { imageBytes: base64Image.includes(',') ? base64Image.split(',')[1] : base64Image, mimeType: 'image/jpeg' },
-      config: { numberOfVideos: 1, resolution: '720p', aspectRatio }
+    const response = await ai.models.generateContent({
+      model,
+      contents: `Perform in-depth market research and competitive analysis on: ${query}. Respond ${langText}.`,
+      config: {
+        tools: [{ googleSearch: {} }],
+      },
     });
-    while (!operation.done) {
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      onStatusChange?.("Rendering cinematic frames...");
-      operation = await ai.operations.getVideosOperation({ operation: operation });
-    }
-    const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-    if (!downloadLink) return null;
-    const key = process.env.API_KEY || localStorage.getItem('bazary_standalone_key') || '';
-    const videoResponse = await fetch(`${downloadLink}&key=${key}`);
-    const videoBlob = await videoResponse.blob();
-    return URL.createObjectURL(videoBlob);
-  } catch (error) {
-    console.error("Video error:", error);
-    return null;
+
+    // Extract grounding chunks as web sources for the UI
+    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
+      ?.map((chunk: any) => ({
+        uri: chunk.web?.uri,
+        title: chunk.web?.title || 'External Source',
+      }))
+      .filter((s: any) => s.uri) || [];
+
+    return {
+      text: response.text || '',
+      sources,
+    };
+  } catch (e) {
+    console.error("Market Research Error:", e);
+    return { 
+      text: lang === 'ru' ? "Произошла ошибка при анализе рынка." : "Bozor tahlili vaqtida xatolik yuz berdi.", 
+      sources: [] 
+    };
   }
 };

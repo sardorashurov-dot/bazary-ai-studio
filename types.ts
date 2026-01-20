@@ -53,6 +53,7 @@ export interface Product {
   targetAudience?: TargetAudience;
   imageUrl: string;
   videoUrl?: string;
+  audioUrl?: string;
   status: ProductStatus;
   variants: ProductVariant[];
   createdAt: number;
