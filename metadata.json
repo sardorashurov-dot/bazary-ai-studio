@@ -1,0 +1,7 @@
+{
+  "name": "Bazary - Photo-to-Shop AI Platform",
+  "description": "A rapid onboarding platform for Telegram sellers that transforms product photos into a fully functional catalog using Gemini AI.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
