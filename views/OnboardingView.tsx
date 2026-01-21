@@ -10,13 +10,15 @@ interface OnboardingViewProps {
 
 const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete, lang }) => {
   const t = translations[lang].aiStudio;
+  const isTelegram = Boolean((window as any).Telegram?.WebApp);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [files, setFiles] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState("");
   const [drafts, setDrafts] = useState<any[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
-const compressImage = (file: File): Promise<string> => {
+
+  const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onerror = () => reject(new Error("Ошибка чтения файла"));
@@ -76,8 +78,22 @@ const compressImage = (file: File): Promise<string> => {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(e.currentTarget.files || []);
-    setFiles(selected);
+    const selected = Array.from(e.target.files || []);
+    if (selected.length === 0) return;
+
+    setFiles((prev) => {
+      const combined = [...prev, ...selected];
+      const seen = new Set<string>();
+      return combined.filter((f) => {
+        const key = `${f.name}:${f.size}:${f.lastModified}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    });
+
+    // allow selecting the same file again
+    e.currentTarget.value = "";
   };
 
   const handleVeoGenerate = async (idx: number) => {
@@ -146,21 +162,55 @@ const compressImage = (file: File): Promise<string> => {
             <h3 className="text-4xl font-black mb-4">Создать Магазин Будущего</h3>
             <p className="text-slate-500 mb-12 max-w-sm mx-auto font-medium">Просто загрузите фото ваших товаров. ИИ создаст уникальную стратегию продаж.</p>
             
-            <div className="aspect-video max-w-lg mx-auto bg-slate-50 rounded-[3rem] border-4 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all group overflow-hidden relative">
-              <input
-                type="file"
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                multiple
-                accept="image/*"
-                onClick={(e) => { (e.currentTarget as HTMLInputElement).value = ""; }}
-                onChange={handleFileChange}
-              />
-              <div className="relative z-10 text-center pointer-events-none">
-                <span className="text-5xl mb-4 block group-hover:scale-125 transition-transform">📸</span>
-                <p className="font-black text-slate-400 uppercase tracking-widest text-[11px]">{files.length > 0 ? `${t.selected}: ${files.length}` : t.choosePhotos}</p>
-              </div>
-            </div></div>
+            <div
 
+            
+              className="aspect-video max-w-lg mx-auto bg-slate-50 border-4 border-dashed border-slate-300 rounded-2xl flex items-center justify-center hover:border-blue-400 hover:bg-blue-50 transition-all group overflow-hidden relative"
+
+            
+            >
+
+            
+              <input
+
+            
+                type="file"
+
+            
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+
+            
+                multiple={!isTelegram}
+
+            
+                accept="image/*"
+
+            
+                onClick={(e) => { (e.currentTarget as HTMLInputElement).value = ""; }}
+
+            
+                onChange={handleFileChange}
+
+            
+              />
+
+            
+              <div className="relative z-10 text-center pointer-events-none">
+
+            
+                <span className="text-5xl mb-4 block group-hover:scale-125 transition-transform">📸</span>
+
+            
+                <p className="font-black text-slate-400 uppercase tracking-widest text-sm">{files.length > 0 ? `${t.selected}: ${files.length}` : t.choosePhotos}</p>
+
+            
+              </div>
+
+            
+            </div>
+
+
+            
             {files.length > 0 && (
               <button 
                 onClick={processImages} 
