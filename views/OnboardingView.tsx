@@ -10,7 +10,6 @@ interface OnboardingViewProps {
 
 const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete, lang }) => {
   const t = translations[lang].aiStudio;
-  const isTelegram = Boolean((window as any).Telegram?.WebApp);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [files, setFiles] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -70,7 +69,7 @@ const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete, lang }) => 
     } catch (e: any) {
       console.error("Upload Error:", e);
       // Выводим конкретную ошибку пользователю
-      alert(`Ошибка ИИ: ${e.message || "Неизвестный сбой"}. Проверьте серверную переменную API_KEY (или GEMINI_API_KEY) в Vercel и доступ к модели Gemini.`);
+      alert(`Ошибка ИИ: ${e.message || "Неизвестный сбой"}. Проверьте правильность API_KEY в настройках Vercel.`);
       setStep(1);
     } finally {
       setIsProcessing(false);
@@ -79,21 +78,9 @@ const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete, lang }) => 
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(e.target.files || []);
-    if (selected.length === 0) return;
-
-    setFiles((prev) => {
-      const combined = [...prev, ...selected];
-      const seen = new Set<string>();
-      return combined.filter((f) => {
-        const key = `${f.name}:${f.size}:${f.lastModified}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    });
-
-    // allow selecting the same file again
-    e.currentTarget.value = "";
+    if (selected.length > 0) {
+      setFiles(prev => [...prev, ...selected].slice(0, 12));
+    }
   };
 
   const handleVeoGenerate = async (idx: number) => {
@@ -163,54 +150,24 @@ const OnboardingView: React.FC<OnboardingViewProps> = ({ onComplete, lang }) => 
             <p className="text-slate-500 mb-12 max-w-sm mx-auto font-medium">Просто загрузите фото ваших товаров. ИИ создаст уникальную стратегию продаж.</p>
             
             <div
-
-            
-              className="aspect-video max-w-lg mx-auto bg-slate-50 border-4 border-dashed border-slate-300 rounded-2xl flex items-center justify-center hover:border-blue-400 hover:bg-blue-50 transition-all group overflow-hidden relative"
-
-            
+              className="aspect-video max-w-lg mx-auto bg-slate-50 rounded-[3rem] border-4 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all group overflow-hidden relative"
             >
-
-            
               <input
-
-            
                 type="file"
-
-            
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-
-            
-                multiple={!isTelegram}
-
-            
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                 accept="image/*"
-
-            
+                multiple={false}
                 onClick={(e) => { (e.currentTarget as HTMLInputElement).value = ""; }}
-
-            
                 onChange={handleFileChange}
-
-            
               />
-
-            
               <div className="relative z-10 text-center pointer-events-none">
-
-            
                 <span className="text-5xl mb-4 block group-hover:scale-125 transition-transform">📸</span>
-
-            
-                <p className="font-black text-slate-400 uppercase tracking-widest text-sm">{files.length > 0 ? `${t.selected}: ${files.length}` : t.choosePhotos}</p>
-
-            
+                <p className="font-black text-slate-400 uppercase tracking-widest text-xs">
+                  {files.length > 0 ? `${t.selected}: ${files.length}` : t.choosePhotos}
+                </p>
               </div>
-
-            
             </div>
 
-
-            
             {files.length > 0 && (
               <button 
                 onClick={processImages} 
