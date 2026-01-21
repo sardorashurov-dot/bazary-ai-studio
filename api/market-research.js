@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     }
 
     const ai = getGeminiClient();
-    const model = process.env.GEMINI_RESEARCH_MODEL || "gemini-1.5-pro";
+    const model = process.env.GEMINI_RESEARCH_MODEL || "gemini-2.5-pro";
 
     const response = await ai.models.generateContent({
       model,

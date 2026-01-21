@@ -30,7 +30,7 @@ export default async function handler(req, res) {
     }));
 
     const ai = getGeminiClient();
-    const model = process.env.GEMINI_ANALYZE_MODEL || "gemini-1.5-flash";
+    const model = process.env.GEMINI_ANALYZE_MODEL || "gemini-2.5-flash";
 
     const response = await ai.models.generateContent({
       model,
