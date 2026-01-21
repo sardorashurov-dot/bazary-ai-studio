@@ -1,7 +1,8 @@
 {
-  "name": "Bazary - Photo-to-Shop AI Platform",
-  "description": "A rapid onboarding platform for Telegram sellers that transforms product photos into a fully functional catalog using Gemini AI.",
+  "name": "Bazary - Blue Ocean AI Merchant Studio",
+  "description": "Transform product photos into unique high-end Telegram stores using Gemini & Veo AI.",
   "requestFramePermissions": [
-    "camera"
+    "camera",
+    "microphone"
   ]
 }
